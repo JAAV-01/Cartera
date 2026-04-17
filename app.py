@@ -16,6 +16,7 @@ import models
 import math
 import crud
 import re
+import generador_cobros
 from urllib.parse import parse_qs   # <--- para reconstruir filtros en /cliente/{id}
 
 # ------------------- Inicialización -------------------
@@ -546,7 +547,6 @@ async def importar_excel(file: UploadFile = File(...), db: Session = Depends(get
         if "telefono" in df.columns: df["telefono"] = df["telefono"].apply(clean_phone)
         if "celular" in df.columns: df["celular"] = df["celular"].apply(clean_phone)
         if "correo"  in df.columns: df["correo"]  = df["correo"].apply(clean_email)
-
         if "fecha_docto" in df.columns: df["fecha_docto"] = df["fecha_docto"].apply(to_dt_nullsafe)
         if "fecha_vcto"  in df.columns: df["fecha_vcto"]  = df["fecha_vcto"].apply(to_dt_nullsafe)
         if "dias_vencidos" in df.columns: df["dias_vencidos"] = df["dias_vencidos"].apply(to_int_nullsafe)
@@ -693,12 +693,23 @@ async def update_cliente(
 
     for campo in ["telefono", "celular", "correo", "fecha_gestion", "tipo", "asesor"]:
         val = form_data.get(campo)
-        if val is not None and val != "":
-            if campo == "correo":
-                val = clean_email(val)
-            if campo in ("telefono", "celular"):
-                val = clean_phone(val)
-            setattr(cliente, campo, val)
+        if val is not None:
+            val_stripped = val.strip()
+            
+            # Si el usuario borró el texto, asignamos cadena vacía (o None para fechas)
+            if val_stripped == "":
+                if campo == "fecha_gestion":
+                    setattr(cliente, campo, None)
+                else:
+                    setattr(cliente, campo, "")
+            else:
+                # Guardamos el dato aplicándole limpieza si es necesario
+                if campo == "correo":
+                    val_stripped = clean_email(val_stripped) or ""
+                elif campo in ("telefono", "celular"):
+                    val_stripped = clean_phone(val_stripped) or ""
+                
+                setattr(cliente, campo, val_stripped)
 
     valor_docto = float(cliente.valor_docto or 0.0)
 
@@ -7299,4 +7310,25 @@ def index(
 
 
 
+
+
+# ------------------- Endpoints Cartas de Cobro -------------------
+@app.get('/generar_cartas_masivas', name='generar_cartas_masivas')
+def cartas_masivas(db: Session = Depends(get_db)):
+    generador_cobros.generar(db_session=db)
+    return RedirectResponse(
+        url='/?msg=Generaci%C3%B3n%20de%20cartas%20completa.%20Archivos%20abiertos%20o%20enviados.&msg_type=success',
+        status_code=303
+    )
+
+@app.get('/cliente/{cliente_id}/generar_carta', name='generar_carta')
+def carta_cliente(cliente_id: int, request: Request, db: Session = Depends(get_db)):
+    cliente = db.query(models.Cliente).filter(models.Cliente.id == cliente_id).first()
+    if not cliente:
+        return RedirectResponse(url='/?msg=Cliente%20no%20encontrado&msg_type=error', status_code=303)
+    generador_cobros.generar(db_session=db, nit_especifico=cliente.nit_cliente)
+    return RedirectResponse(
+        url=f'/cliente/{cliente_id}?msg=Carta%20generada%20correctamente.&msg_type=success',
+        status_code=303
+    )
 

@@ -163,8 +163,13 @@
 <a href="{{ back_url }}" class="navbar-button">⟵ Regresar</a>
 
 <div class="form-wrapper">
-    <!-- Botón Guardar arriba a la derecha -->
+    <!-- Botones arriba a la derecha -->
     <div class="top-right-buttons">
+        {% if cliente.correo %}
+        <a href="/cliente/{{ cliente.id }}/generar_carta" class="btn btn-primary" style="background-color: #0ea5e9; color: white; display: flex; align-items: center; justify-content: center;">Enviar Correo</a>
+        {% else %}
+        <a href="/cliente/{{ cliente.id }}/generar_carta" class="btn btn-primary" style="background-color: #fca311; color: black; display: flex; align-items: center; justify-content: center;">Generar Carta</a>
+        {% endif %}
         <button type="submit" form="clienteForm" class="btn btn-primary">Guardar datos</button>
     </div>
 
