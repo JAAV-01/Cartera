@@ -23,7 +23,9 @@ class Cliente(Base):
     tipo = Column(String(100))
     observaciones = relationship("Observacion", back_populates="cliente", cascade="all, delete")
     correo = Column(String(255), nullable=True)
-
+    direccion = Column(String(255), nullable=True)
+    municipio = Column(String(100), nullable=True)
+    departamento = Column(String(100), nullable=True)
 
 class Observacion(Base):
     __tablename__ = "observaciones"

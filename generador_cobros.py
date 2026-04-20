@@ -23,25 +23,24 @@ class CartaCobro(FPDF):
         # Logo de la empresa
         logo_path = os.path.join("assets", "img", "logo.png")
         if os.path.exists(logo_path):
-            self.image(logo_path, 18, 8, 48)
+            self.image(logo_path, 10, 8, 33)
             
-        self.set_font('Helvetica', '', 12)
-        # JOSÉ A Y GERARDO E ZULUAGA S.A.S. (sin negrita en el PDF, o poco)
+        self.set_font('helvetica', 'B', 12)
         self.cell(0, 5, 'José A y Gerardo E Zuluaga S.A.S.', new_x="LMARGIN", new_y="NEXT", align='C')
-        self.set_font('Helvetica', 'B', 9)
+        self.set_font('helvetica', 'B', 10)
         self.cell(0, 5, 'IMPORTADORES DE GRANOS, ESPECIAS Y CONDIMENTOS', new_x="LMARGIN", new_y="NEXT", align='C')
-        self.set_font('Helvetica', 'B', 8)
-        self.cell(0, 4, 'NIT: 890.928.717-5', new_x="LMARGIN", new_y="NEXT", align='C')
-        self.ln(10)
+        self.set_font('helvetica', 'B', 9)
+        self.cell(0, 5, 'NIT: 890.928.717-5', new_x="LMARGIN", new_y="NEXT", align='C')
+        self.ln(15)
 
     def footer(self):
         self.set_y(-25)
-        self.set_font('Helvetica', '', 9)
-        self.set_text_color(0, 102, 204) # Azul link
-        self.cell(0, 5, "www.zuluagahermanos.com", new_x="LMARGIN", new_y="NEXT", align='C')
+        self.set_font('helvetica', '', 9)
+        self.set_text_color(0, 0, 255) # Azul link
+        self.cell(0, 5, 'www.zuluagahermanos.com', new_x="LMARGIN", new_y="NEXT", align='C', link='http://www.zuluagahermanos.com')
         self.set_text_color(0, 0, 0)
-        self.cell(0, 5, "CENTRAL MAYORISTA BLOQUE2-LC13 ITAGUI-ANTIOQUIA TEL: (604) 320 23 80", new_x="LMARGIN", new_y="NEXT", align='C')
-        self.cell(0, 5, "CEL: 3172981578", new_x="LMARGIN", new_y="NEXT", align='C')
+        self.cell(0, 5, 'CENTRAL MAYORISTA BLOQUE2-LC13 ITAGUI-ANTIOQUIA TEL: (604) 320 23 80', new_x="LMARGIN", new_y="NEXT", align='C')
+        self.cell(0, 5, 'CEL: 3172981578', new_x="LMARGIN", new_y="NEXT", align='C')
 
 def enviar_correo(pdf_path, email_dest, nombre_cliente, total_mora, max_dias):
     if not SMTP_USER or not SMTP_PASS:
@@ -58,7 +57,7 @@ def enviar_correo(pdf_path, email_dest, nombre_cliente, total_mora, max_dias):
 
 Nos dirigimos a usted con el fin de recordarle que a la fecha han transcurrido más {max_dias} días desde su vencimiento.
 
-El monto adeudado es de ${mora_str}. 
+El monto adeudado es de $ {mora_str}. 
 
 Apreciamos mucho su atención a este asunto y agradeceríamos que nos informe si existe alguna dificultad con el pago o si requiere algún detalle adicional para proceder.
 
@@ -118,108 +117,146 @@ def generar(nit_especifico=None, db_session=None):
             print(f"\nLectura: Archivo de cartera detectado: {len(facturas)} facturas encontradas para {nombre_cliente}")
             
             pdf = CartaCobro()
-            pdf.set_margins(18, 15, 18)
             pdf.add_page()
             
             # Fecha a la derecha
             meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
             hoy = datetime.now()
             str_fecha = f"{hoy.day} de {meses[hoy.month-1]} de {hoy.year}"
-            pdf.set_font('Helvetica', '', 10)
-            pdf.cell(0, 10, str_fecha, new_x="LMARGIN", new_y="NEXT", align='R')
+            pdf.set_font('helvetica', '', 10)
+            pdf.cell(0, 6, str_fecha, new_x="LMARGIN", new_y="NEXT", align='R')
             pdf.ln(5)
             
-            # Datos Cliente
+           # Datos Cliente
             pdf.set_font('Helvetica', 'B', 10)
             pdf.cell(0, 4, f"{nombre_cliente}", new_x="LMARGIN", new_y="NEXT")
             pdf.set_font('Helvetica', '', 9)
             
-            # Evitar Nones
+            # --- NUEVO: Extraer y mostrar NIT / CC ---
+            nit_str = primera_fac.nit_cliente or ""
+            if nit_str:
+                pdf.cell(0, 4, f"NIT/CC: {nit_str}", new_x="LMARGIN", new_y="NEXT")
+            # -----------------------------------------
+
+            # --- NUEVO: Extraer y mostrar dirección ---
+            dir_str = primera_fac.direccion or ""
+            mun_str = primera_fac.municipio or ""
+            dep_str = primera_fac.departamento or ""
+            
+            # Unir municipio y departamento (ej: "Itagüí, Antioquia")
+            ubicacion = ", ".join(filter(None, [mun_str, dep_str]))
+            # Unir la dirección con la ubicación (ej: "CL 85 CR 48 1 BL 2 LC 14 - Itagüí, Antioquia")
+            direccion_completa = " - ".join(filter(None, [dir_str, ubicacion]))
+            
+            # Si hay alguna dirección, imprimirla en el PDF
+            if direccion_completa:
+                pdf.cell(0, 4, f"{direccion_completa}", new_x="LMARGIN", new_y="NEXT")
+            # ------------------------------------------
+
+            # Evitar Nones en teléfonos
             tel = primera_fac.telefono or ""
             cel = primera_fac.celular or ""
             tels = " - ".join(filter(None, [tel, cel]))
             
             pdf.set_text_color(0, 51, 204) # Azul
             if tels:
-                pdf.cell(0, 4, tels, new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 4, f"Tel: {tels}", new_x="LMARGIN", new_y="NEXT")
             if correo:
                 pdf.cell(0, 4, f"{correo}", new_x="LMARGIN", new_y="NEXT")
             pdf.set_text_color(0, 0, 0) # Negro
             
             pdf.ln(5)
             # Asunto
-            pdf.set_font('Helvetica', 'B', 10)
-            pdf.cell(0, 8, "Asunto: Carta de Cobro.", new_x="LMARGIN", new_y="NEXT")
-            
+            pdf.set_font('helvetica', 'B', 10)
+            pdf.cell(0, 5, "Asunto: Carta de Cobro.", new_x="LMARGIN", new_y="NEXT")
             pdf.ln(5)
-            pdf.set_font('Helvetica', '', 10)
-            w_est = pdf.get_string_width("Estimado ")
-            pdf.cell(w_est, 5, "Estimado ", align='L')
-            pdf.set_font('Helvetica', 'B', 10)
-            pdf.cell(0, 5, f"{nombre_cliente}", new_x="LMARGIN", new_y="NEXT", align='L')
             
+            # Saludo
+            pdf.set_font('helvetica', '', 10)
+            pdf.cell(0, 5, f"Estimado {nombre_cliente}", new_x="LMARGIN", new_y="NEXT")
             pdf.ln(5)
-            pdf.set_font('Helvetica', '', 10)
             
             mora_str = f"{total_mora:,.0f}".replace(",", ".")
-            intro_text = f"A la fecha de hoy su cuenta presenta un saldo vencido de $ {mora_str}, correspondiente a las facturas"
-            pdf.multi_cell(0, 5, intro_text)
+            texto_intro = f"A la fecha de hoy su cuenta presenta un saldo vencido de $ {mora_str}, correspondiente a las facturas"
+            pdf.multi_cell(0, 5, texto_intro)
             pdf.ln(5)
             
-            # Tabla
-            pdf.set_font('Helvetica', '', 9)
-            pdf.set_fill_color(255, 255, 255)
+            # Encabezado de la Tabla centrado
+            pdf.set_font('helvetica', 'B', 9)
+            pdf.set_fill_color(220, 220, 220)
             
-            # Anchos: Total 174 mm para cuadrar con márgenes de 18 (210 - 36 = 174)
-            w1, w2, w3, w4, w5 = 62, 28, 25, 25, 34
-            pdf.cell(w1, 6, 'Razón social', border=1)
-            pdf.cell(w2, 6, 'Nro. docto. cruce', border=1)
-            pdf.cell(w3, 6, 'Días vencidos', border=1)
-            pdf.cell(w4, 6, 'Fecha vcto.', border=1)
-            pdf.cell(w5, 6, 'Total COP', border=1, new_x="LMARGIN", new_y="NEXT")
+            # Anchos ajustados sin la razón social. Total: 150mm
+            col_widths = [40, 30, 35, 45]
+            headers = ["Nro. docto. cruce", "Días vencidos", "Fecha vcto.", "Total COP"]
             
-            # Filas
+            # Calcular posición X para centrar la tabla en la página
+            table_width = sum(col_widths)
+            start_x = (pdf.w - table_width) / 2
+            
+            pdf.set_x(start_x)
+            for i, header in enumerate(headers):
+                pdf.cell(col_widths[i], 6, header, border=1, fill=True, align='C')
+            pdf.ln()
+            
+            # Filas de la Tabla
+            pdf.set_font('helvetica', '', 9)
             for f in facturas:
                 f_doc = str(f.nro_docto_cruce)
-                f_vcto = f.fecha_vcto.strftime("%d/%m/%Y") if f.fecha_vcto else "N/A"
-                f_dias = str(f.dias_vencidos) if f.dias_vencidos is not None else "0"
+                f_dias = str(f.dias_vencidos).split('.')[0] if f.dias_vencidos is not None else "0"
+                f_vcto = f.fecha_vcto.strftime("%d/%m/%Y") if f.fecha_vcto else ""
                 saldo_val = float(f.total_cop) if f.total_cop else 0.0
                 f_saldo = f"{saldo_val:,.0f}".replace(",", ".")
                 
-                pdf.cell(w1, 6, str(nombre_cliente)[:35], border=1)
-                pdf.cell(w2, 6, f_doc, border=1)
-                pdf.cell(w3, 6, f_dias, border=1)
-                pdf.cell(w4, 6, f_vcto, border=1)
-                pdf.cell(w5, 6, f_saldo, border=1, new_x="LMARGIN", new_y="NEXT")
+                # Posicionar cada fila en el mismo punto de inicio centrado
+                pdf.set_x(start_x)
+                pdf.cell(col_widths[0], 6, f_doc, border=1, align='C')
+                pdf.cell(col_widths[1], 6, f_dias, border=1, align='C')
+                pdf.cell(col_widths[2], 6, f_vcto, border=1, align='C')
+                pdf.cell(col_widths[3], 6, f_saldo, border=1, align='R')
+                pdf.ln(6)
                 
             pdf.ln(8)
             
             # Texto Legal
-            pdf.set_font('Helvetica', '', 9.5)
-            texto_legal1 = "Tenga presente que la ley 1266 de Habeas Data y las nuevas disposiciones en materia crediticia, exigen a JOSÉ A Y GERARDO E ZULUAGA S.A.S. el reporte a las centrales de riesgo (Datacredito), al igual que a sus codeudores."
+            pdf.set_font('helvetica', '', 10)
+            texto_legal = "Tenga presente que la ley 1266 de Habeas Data y las nuevas disposiciones en materia crediticia, exigen a JOSÉ A Y GERARDO E ZULUAGA S.A.S. el reporte a las centrales de riesgo (Datacredito), al igual que a sus codeudores."
+            pdf.multi_cell(0, 5, texto_legal)
+            pdf.ln(5)
             
-            texto_html2 = """Para evitar ser reportado negativamente, comuníquese al teléfono <font color="#0033cc">(604) 320 23 80</font> celular <font color="#0033cc">312 833 4630</font> los correos electrónicos <font color="#0033cc"><a href="mailto:credito-cartera@josegera.com">credito-cartera@josegera.com</a> ; <a href="mailto:cartera@josegera.com">cartera@josegera.com</a></font> para establecer acuerdo de pago."""
-            
-            texto_legal3 = "Si al recibir esta carta usted se encuentra al día, por favor haga caso omiso a su contenido."
-            
-            pdf.multi_cell(0, 5, texto_legal1)
-            pdf.ln(4)
-            pdf.write_html(texto_html2)
-            pdf.ln(4)
-            pdf.multi_cell(0, 5, texto_legal3)
-            
+            # Textos de contacto con correos en Azul
+            texto_contacto1 = "Para evitar ser reportado negativamente, comuníquese al teléfono (604) 320 23 80 celular 312 833 4630 los correos electrónicos "
+            pdf.write(5, texto_contacto1)
+            pdf.set_text_color(0, 0, 255)
+            pdf.write(5, "credito_cartera@josegera.com ; cartera@josegera.com")
+            pdf.set_text_color(0, 0, 0)
+            pdf.write(5, " para establecer acuerdo de pago.")
             pdf.ln(8)
             
-            # Firma (la imagen ya incluye Atentamente y datos)
-            firma_path = os.path.join("assets", "img", "firma_sebastian.jpeg")
-            if os.path.exists(firma_path):
-                y_firma = pdf.get_y()
-                pdf.image(firma_path, 18, y_firma, 60)
-                pdf.ln(35)
-            else:
-                pdf.ln(15)
+            pdf.multi_cell(0, 5, "Si al recibir esta carta usted se encuentra al día, por favor haga caso omiso a su contenido.")
+            pdf.ln(6)
+            pdf.cell(0, 5, "Atentamente,", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(10)
             
-            # Guardar temporalmente con nombre limpio
+            # Firma
+            firma_y = pdf.get_y()
+            
+            # Soporte dual para el nombre de la firma por si existe "firma_sebastian (1).jpeg" o la versión normal
+            firma_path_1 = os.path.join("assets", "img", "image.png")
+            
+            if os.path.exists(firma_path_1):
+                pdf.image(firma_path_1, 10, firma_y, w=40)
+            elif os.path.exists(firma_path_2):
+                pdf.image(firma_path_2, 10, firma_y, w=40)
+                
+            pdf.ln(18) 
+            pdf.set_font('helvetica', '', 10)
+            pdf.cell(0, 5, "SEBASTIÁN ÁLVAREZ SEPÚLVEDA", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font('helvetica', 'B', 10)
+            pdf.cell(0, 5, "Coordinador crédito y cartera", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font('helvetica', '', 10)
+            pdf.cell(0, 5, "Cel: 310 884 1486", new_x="LMARGIN", new_y="NEXT")
+            
+            # Guardado
             nombre_safe = "".join([c for c in nombre_cliente if c.isalnum() or c==' ']).strip()
             base_pdf_path = os.path.join(out_dir, f"Cobro_{nombre_safe}.pdf")
             pdf_path = base_pdf_path
