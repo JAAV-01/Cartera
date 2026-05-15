@@ -1,5 +1,5 @@
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
-from fastapi import UploadFile, File, Form, Query, status
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse, FileResponse
+from fastapi import UploadFile, File, Form, Query, status, Body
 from database import SessionLocal, engine, Base
 from fastapi.templating import Jinja2Templates
 from fastapi import FastAPI, Request, Depends
@@ -11,13 +11,20 @@ from datetime import datetime
 from typing import Optional
 from decimal import Decimal
 from io import BytesIO
+from pydantic import BaseModel
 import pandas as pd
 import models
 import math
 import crud
 import re
 import generador_cobros
+import zipfile
+import uuid
+import os
 from urllib.parse import parse_qs   # <--- para reconstruir filtros en /cliente/{id}
+
+class CobroMasivoRequest(BaseModel):
+    cliente_ids: list[int]
 
 # ------------------- Inicialización -------------------
 app = FastAPI()
@@ -956,8 +963,14 @@ def index(
         if c.nit_cliente not in agrupados:
             agrupados[c.nit_cliente] = {
                 "nit_cliente": c.nit_cliente, "razon_social": c.razon_social, "telefono": c.telefono,
-                "celular": c.celular, "correo": c.correo, "asesor": c.asesor, "facturas": []
+                "celular": c.celular, "correo": c.correo, "asesor": c.asesor, "facturas": [],
+                "max_dias": 0
             }
+            
+        current_dias = c.dias_vencidos if c.dias_vencidos is not None else 0
+        if current_dias > agrupados[c.nit_cliente]["max_dias"]:
+            agrupados[c.nit_cliente]["max_dias"] = current_dias
+            
         agrupados[c.nit_cliente]["facturas"].append({
             "id": c.id, "nro_docto_cruce": c.nro_docto_cruce, "dias_vencidos": c.dias_vencidos,
             "valor_docto": float(c.valor_docto or 0), "total_cop": float(c.total_cop or 0),
@@ -965,3 +978,61 @@ def index(
         })
 
     return templates.TemplateResponse("index.html", {"request": request, "clientes": list(agrupados.values()), "current_qs": current_qs, "view": view, "q": q, "sort": sort})
+
+# ------------------- Cobro Masivo -------------------
+@app.get("/cobro_masivo")
+def cobro_masivo(request: Request, db: Session = Depends(get_db)):
+    clientes = db.query(models.Cliente).filter(
+        models.Cliente.dias_vencidos > 14,
+        models.Cliente.total_cop > 0
+    ).order_by(models.Cliente.dias_vencidos.desc()).all()
+    
+    return templates.TemplateResponse("cobro_masivo.html", {
+        "request": request,
+        "clientes": clientes
+    })
+
+@app.post("/api/ejecutar_cobro_masivo")
+def ejecutar_cobro_masivo(req: CobroMasivoRequest, db: Session = Depends(get_db)):
+    cliente_ids = req.cliente_ids
+    facturas = db.query(models.Cliente).filter(models.Cliente.id.in_(cliente_ids)).all()
+    nits_unicos = list(set([f.nit_cliente for f in facturas if f.nit_cliente]))
+    
+    enviados = 0
+    manuales_pdfs = []
+    
+    for nit in nits_unicos:
+        pdf_path, enviado = generador_cobros.generar(nit_especifico=nit, db_session=db, masivo=True)
+        if enviado:
+            enviados += 1
+            db.query(models.Cliente).filter(models.Cliente.nit_cliente == nit).update(
+                {"fecha_gestion": datetime.now().date()},
+                synchronize_session=False
+            )
+            db.commit()
+        else:
+            if pdf_path and os.path.exists(pdf_path):
+                manuales_pdfs.append(pdf_path)
+                
+    zip_filename = None
+    if manuales_pdfs:
+        os.makedirs("cartas_generadas", exist_ok=True)
+        zip_filename = f"Cobros_Manuales_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
+        zip_path = os.path.join("cartas_generadas", zip_filename)
+        with zipfile.ZipFile(zip_path, 'w') as zipf:
+            for pdf in manuales_pdfs:
+                zipf.write(pdf, arcname=os.path.basename(pdf))
+        
+    return JSONResponse({
+        "success": True,
+        "enviados": enviados,
+        "manuales": len(manuales_pdfs),
+        "zip_filename": zip_filename
+    })
+
+@app.get("/descargar_zip/{archivo}")
+def descargar_zip(archivo: str):
+    zip_path = os.path.join("cartas_generadas", archivo)
+    if os.path.exists(zip_path):
+        return FileResponse(zip_path, media_type='application/zip', filename=archivo)
+    raise HTTPException(status_code=404, detail="Archivo no encontrado")

@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+  /* Overlay */
+  #overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    color: white;
+    text-align: center;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+  .spinner-border {
+    width: 3rem; height: 3rem;
+  }
+  .ix-table td, .ix-table th {
+      vertical-align: middle;
+  }
+  .row-processed {
+      background-color: #d1e7dd !important;
+  }
+  .form-check-input:checked {
+      background-color: #198754 !important;
+      border-color: #198754 !important;
+  }
+  .form-check-input {
+      accent-color: #198754;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-index">
+  <div class="ix-wrap">
+    <h1>Cobro Masivo (> 14 días mora)</h1>
+
+    <div class="card shadow-sm mt-3">
+      <div class="card-body">
+      <form id="form-masivo">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="h5 mb-0 text-secondary">Seleccione los clientes a procesar</h2>
+            <div>
+              <button type="submit" class="btn btn-success">Procesar Seleccionados</button>
+              <a href="/" class="btn btn-outline-secondary ms-2">Volver</a>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+        <table class="table table-hover table-striped align-middle ix-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 50px;" class="fw-bold">
+                <input type="checkbox" class="form-check-input" id="check-all" />
+              </th>
+              <th class="fw-bold">NIT</th>
+              <th class="fw-bold">Razón Social</th>
+              <th class="right fw-bold">Días Mora</th>
+              <th class="right fw-bold">Saldo</th>
+              <th class="fw-bold">Correo</th>
+              <th class="fw-bold">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in clientes %}
+            <tr id="row-{{ c.id }}">
+              <td>
+                <input type="checkbox" class="form-check-input row-checkbox" value="{{ c.id }}" />
+              </td>
+              <td>{{ c.nit_cliente or '-' }}</td>
+              <td>{{ c.razon_social or '-' }}</td>
+              <td class="right">{{ c.dias_vencidos if c.dias_vencidos is not none else '-' }}</td>
+              <td class="right mono">{{ c.total_cop | fmt_money }}</td>
+              <td>{{ c.correo or 'Sin correo' }}</td>
+              <td class="status-cell"></td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="7" class="text-center">No hay clientes con más de 14 días de mora.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Overlay -->
+<div id="overlay">
+  <div class="spinner-border text-light mb-3" role="status">
+    <span class="visually-hidden">Procesando...</span>
+  </div>
+  <h3>Procesando... No cierre la ventana</h3>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const checkAll = document.getElementById('check-all');
+    const checkboxes = document.querySelectorAll('.row-checkbox');
+    const form = document.getElementById('form-masivo');
+    const overlay = document.getElementById('overlay');
+
+    if (checkAll) {
+        checkAll.addEventListener('change', (e) => {
+            checkboxes.forEach(cb => {
+                if(cb.style.display !== 'none'){
+                    cb.checked = e.target.checked;
+                }
+            });
+        });
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const selectedIds = Array.from(checkboxes)
+                                .filter(cb => cb.checked)
+                                .map(cb => parseInt(cb.value));
+
+        if (selectedIds.length === 0) {
+            alert('Por favor, seleccione al menos un cliente.');
+            return;
+        }
+
+        // Show overlay
+        overlay.style.display = 'flex';
+
+        try {
+            const response = await fetch('/api/ejecutar_cobro_masivo', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ cliente_ids: selectedIds })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Update UI for processed rows
+                selectedIds.forEach(id => {
+                    const row = document.getElementById(`row-${id}`);
+                    if (row) {
+                        row.classList.add('row-processed');
+                        const cb = row.querySelector('.row-checkbox');
+                        if (cb) {
+                            cb.checked = false;
+                            cb.style.display = 'none';
+                        }
+                        const statusCell = row.querySelector('.status-cell');
+                        if (statusCell) {
+                            statusCell.innerHTML = '✅ Procesado';
+                        }
+                    }
+                });
+
+                // Uncheck select all
+                if (checkAll) checkAll.checked = false;
+
+                let alertMsg = `Proceso finalizado.\nCorreos enviados: ${data.enviados}\nDescargas manuales (sin correo): ${data.manuales}`;
+                
+                if (data.zip_filename) {
+                    alertMsg += `\n\nLas cartas para impresión manual fueron guardadas de forma segura en la carpeta 'cartas_generadas' del servidor bajo el nombre ${data.zip_filename}`;
+                }
+                
+                overlay.style.display = 'none';
+                setTimeout(() => {
+                    alert(alertMsg);
+                }, 100);
+            } else {
+                overlay.style.display = 'none';
+                setTimeout(() => {
+                    alert('Hubo un error en el procesamiento.');
+                }, 100);
+            }
+        } catch (error) {
+            console.error(error);
+            overlay.style.display = 'none';
+            setTimeout(() => {
+                alert('Error de red o de servidor.');
+            }, 100);
+        }
+    });
+});
+</script>
+{% endblock %}

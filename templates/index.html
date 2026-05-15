@@ -115,6 +115,7 @@
           <button class="ix-btn" type="submit">Aplicar</button>
           <a href="/exportar_cartera.xlsx{% if current_qs %}?{{ current_qs|urlencode }}{% endif %}"
              class="ix-btn ix-btn-green">Exportar Excel</a>
+          <a href="/cobro_masivo" class="ix-btn ix-btn-green" style="background-color: #28a745;">Ir a Cobro Masivo</a>
         </div>
       </form>
     </div>
@@ -181,7 +182,7 @@
               <span class="muted"> · NIT: {{ cl.nit_cliente or 's/n' }}</span>
             </div>
             <div class="muted">Facturas: {{ cl.facturas|length }}</div>
-            <div><span class="ix-badge">Máx. días: {{ cl.max_dias or '-' }}</span></div>
+            <div><span class="ix-badge">Máx. días: {{ cl.max_dias }}</span></div>
           </summary>
           <div class="ix-summary-body">
             <table class="ix-table">

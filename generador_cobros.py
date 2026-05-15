@@ -81,8 +81,10 @@ Quedamos atentos a su pronta respuesta y a la regularización de este saldo pend
         print(f"❌ Error al enviar correo a {email_dest}: {e}")
         return False
 
-def generar(nit_especifico=None, db_session=None):
+def generar(nit_especifico=None, db_session=None, masivo=False):
     db = db_session if db_session else SessionLocal()
+    pdf_path_ret = None
+    enviado_ret = False
     try:
         # Consultamos los clientes que tienen un saldo pendiente
         query = db.query(Cliente).filter(Cliente.total_cop > 0)
@@ -100,7 +102,7 @@ def generar(nit_especifico=None, db_session=None):
             
         if not agrupado:
             print("No hay facturas con saldo pendiente (total_cop > 0) procedentes de la base de datos.")
-            return
+            return (None, False)
 
         out_dir = "cartas_generadas"
         os.makedirs(out_dir, exist_ok=True)
@@ -270,6 +272,7 @@ def generar(nit_especifico=None, db_session=None):
                     counter += 1
             
             # Envío o apertura manual
+            enviado = False
             if correo:
                 print(f"Validación: Email encontrado: {correo}. Procediendo a envío.")
                 max_dias_cliente = max([int(f.dias_vencidos) for f in facturas if f.dias_vencidos is not None], default=0)
@@ -282,10 +285,16 @@ def generar(nit_especifico=None, db_session=None):
                 print(f"Validación: No se encontró email para {nombre_cliente}. Se abrirá el archivo generado.")
                 abs_path = os.path.abspath(pdf_path)
                 try:
-                    # Comando nativo de Windows (explorer) para seleccionar el archivo en carpeta
-                    subprocess.Popen(f'explorer /select,"{abs_path}"')
+                    if not masivo:
+                        # Comando nativo de Windows (explorer) para seleccionar el archivo en carpeta
+                        subprocess.Popen(f'explorer /select,"{abs_path}"')
                 except Exception as e:
                     print(f"No se pudo abrir el explorador de forma automática: {e}")
+            
+            pdf_path_ret = pdf_path
+            enviado_ret = enviado
+
+        return (pdf_path_ret, enviado_ret)
                     
     finally:
         if not db_session:
