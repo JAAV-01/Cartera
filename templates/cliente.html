@@ -165,6 +165,7 @@
 <div class="form-wrapper">
     <!-- Botones arriba a la derecha -->
     <div class="top-right-buttons">
+        <a href="/cliente/{{ cliente.id }}/generar_certificado" class="btn btn-outline-primary" style="display: flex; align-items: center; justify-content: center; background-color: #f8f9fa; color: #0ea5e9; border: 1px solid #0ea5e9;">Generar Certificado Comercial</a>
         {% if cliente.correo %}
         <a href="/cliente/{{ cliente.id }}/generar_carta" class="btn btn-primary" style="background-color: #0ea5e9; color: white; display: flex; align-items: center; justify-content: center;">Enviar Correo</a>
         {% else %}

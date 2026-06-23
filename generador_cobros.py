@@ -53,7 +53,7 @@ def enviar_correo(pdf_path, email_dest, nombre_cliente, total_mora, max_dias):
     msg['To'] = email_dest
     
     mora_str = f"{total_mora:,.0f}".replace(",", ".")
-    cuerpo = f"""Estimada {nombre_cliente}
+    cuerpo = f"""Estimado(a) {nombre_cliente}
 
 Nos dirigimos a usted con el fin de recordarle que a la fecha han transcurrido más {max_dias} días desde su vencimiento.
 

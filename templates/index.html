@@ -54,19 +54,36 @@
     <h1>Cartera</h1>
 
     <!-- Importación -->
-    <div class="ix-card">
-      <form action="/importar_excel" method="post" enctype="multipart/form-data">
-        <div class="ix-grid">
-          <div>
-            <label>Archivo Cartera (.xlsx/.xls/.csv)</label>
-            <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+    <div class="ix-grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div class="ix-card" style="margin: 0;">
+        <form action="/importar_excel" method="post" enctype="multipart/form-data">
+          <div class="ix-grid">
+            <div>
+              <label>Archivo Cartera (.xlsx/.xls/.csv)</label>
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+            </div>
+            <div>
+              <label>&nbsp;</label>
+              <button class="ix-btn ix-btn-green" type="submit">Importar</button>
+            </div>
           </div>
-          <div>
-            <label>&nbsp;</label>
-            <button class="ix-btn ix-btn-green" type="submit">Importar</button>
+        </form>
+      </div>
+      
+      <div class="ix-card" style="margin: 0;">
+        <form action="/api/importar_datos_comerciales" method="post" enctype="multipart/form-data">
+          <div class="ix-grid">
+            <div>
+              <label>Datos Comerciales (.xlsx)</label>
+              <input type="file" name="file" accept=".xlsx,.xls" required>
+            </div>
+            <div>
+              <label>&nbsp;</label>
+              <button class="ix-btn ix-btn-green" style="background-color: #0d6efd;" type="submit">Actualizar Datos</button>
+            </div>
           </div>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
 
     <!-- Filtros -->

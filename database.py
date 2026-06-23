@@ -11,7 +11,7 @@ DB_USER = os.getenv("DB_USER", "desarrollojosea")
 DB_PASS = os.getenv("DB_PASS", "Djosea01*")
 DB_HOST = os.getenv("DB_HOST", "192.168.1.14")
 DB_PORT = os.getenv("DB_PORT", "1433")
-DB_NAME = os.getenv("DB_NAME", "cartera_db2")
+DB_NAME = os.getenv("DB_NAME", "cartera_db")
 DB_ENCRYPT = os.getenv("DB_ENCRYPT", "yes")              # yes / no
 DB_TRUST = os.getenv("DB_TRUSTSERVERCERT", "yes")        # yes / no
 

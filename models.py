@@ -26,6 +26,11 @@ class Cliente(Base):
     direccion = Column(String(255), nullable=True)
     municipio = Column(String(100), nullable=True)
     departamento = Column(String(100), nullable=True)
+    fecha_ingreso = Column(Date, nullable=True)
+    condicion_pago = Column(String(100), nullable=True)
+    cupo_credito = Column(Numeric(18, 2), nullable=True, default=0)
+    fecha_ultima_compra = Column(Date, nullable=True)
+    promedio_mensual = Column(Numeric(18, 2), nullable=True, default=0)
 
 class Observacion(Base):
     __tablename__ = "observaciones"

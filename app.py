@@ -18,6 +18,7 @@ import math
 import crud
 import re
 import generador_cobros
+import generador_certificado
 import zipfile
 import uuid
 import os
@@ -718,6 +719,108 @@ def generar_carta_cobro(cliente_id: int, request: Request, db: Session = Depends
             url=f"/cliente/{cliente_id}?msg=Hubo%20un%20error%20al%20generar%20la%20carta&msg_type=error",
             status_code=status.HTTP_303_SEE_OTHER
         )
+
+# ------------------- Generar Certificado Comercial -------------------
+@app.get("/cliente/{cliente_id}/generar_certificado")
+def generar_certificado(cliente_id: int, request: Request, db: Session = Depends(get_db)):
+    cliente = db.query(models.Cliente).filter(models.Cliente.id == cliente_id).first()
+    if not cliente:
+        return RedirectResponse(url="/?msg=Cliente%20no%20encontrado&msg_type=error", status_code=303)
+        
+    try:
+        generador_certificado.generar(cliente.nit_cliente, db)
+        return RedirectResponse(
+            url=f"/cliente/{cliente_id}?msg=Certificado%20generado%20exitosamente&msg_type=success",
+            status_code=303
+        )
+    except Exception as e:
+        print(f"❌ Error al generar el certificado: {e}")
+        return RedirectResponse(
+            url=f"/cliente/{cliente_id}?msg=Hubo%20un%20error%20al%20generar%20el%20certificado&msg_type=error",
+            status_code=303
+        )
+
+# ------------------- Importar Datos Comerciales -------------------
+@app.post("/api/importar_datos_comerciales")
+async def importar_datos_comerciales(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    try:
+        contents = await file.read()
+        sheets = pd.read_excel(BytesIO(contents), sheet_name=None, dtype=str, keep_default_na=False)
+
+        if "BASE DE DATOS" in sheets:
+            df_base = sheets["BASE DE DATOS"]
+            for _, row in df_base.iterrows():
+                codigo = str(row.get("Código", "")).strip()
+                if not codigo: continue
+                cliente = db.query(models.Cliente).filter_by(nit_cliente=codigo).first()
+                if cliente:
+                    # Update fields
+                    cliente.fecha_ingreso = to_dt_nullsafe(row.get("Fecha ingreso"))
+                    
+                    MAPEO_CONDICIONES = {
+                        'C00': 'CONTADO', 'C01': 'CONTADO 1 DIA', 'C08': 'CLIENTE 8 DIAS',
+                        'C10': 'CLIENTE 10 DIAS', 'C15': 'CLIENTE 15 DIAS', 'C20': 'CLIENTE 20 DIAS',
+                        'C30': 'CLIENTE 30 DIAS', 'C35': 'CLIENTE 35 DIAS', 'C40': 'CLIENTE 40 DIAS',
+                        'C45': 'CLIENTE 45 DIAS', 'C60': 'CLIENTE 60 DIAS', 'C90': 'CLIENTE 90 DIAS',
+                        'COD': 'PAGO CONTRAENTREGA', 'CON': 'CONTADO', 'P01': 'PROVEEDORES 1 DIA',
+                        'P04': 'PROVEEDORES 30 DIAS', 'P05': 'PROVEEDORES 8 DIAS', 'P30': 'PROVEEDORES 30 DIAS',
+                        'PAN': 'PAGO ANTICIPADO'
+                    }
+                    
+                    codigo_crudo = str(row.get("Condicion de pago", "")).upper().replace(" ", "").strip()
+                    desc_excel = str(row.get("Desc. condicion de pago", "")).upper().strip()
+
+                    if codigo_crudo in MAPEO_CONDICIONES:
+                        cliente.condicion_pago = MAPEO_CONDICIONES[codigo_crudo]
+                    elif desc_excel and desc_excel not in ['NAN', 'NONE', '']:
+                        cliente.condicion_pago = desc_excel
+                    elif codigo_crudo and codigo_crudo not in ['NAN', 'NONE', '']:
+                        cliente.condicion_pago = codigo_crudo
+                    else:
+                        cliente.condicion_pago = None
+                    
+                    cliente.cupo_credito = to_float(row.get("Cupo de crédito"))
+                    cliente.fecha_ultima_compra = to_dt_nullsafe(row.get("Fecha última venta"))
+
+        if "VENTAS" in sheets:
+            df_ventas = sheets["VENTAS"]
+            
+            # Clean nit
+            df_ventas["Cliente factura"] = df_ventas["Cliente factura"].astype(str).str.strip()
+            
+            for nit, group in df_ventas.groupby("Cliente factura"):
+                if not nit: continue
+                cliente = db.query(models.Cliente).filter_by(nit_cliente=nit).first()
+                if cliente:
+                    # Parse dates
+                    group["Fecha_dt"] = pd.to_datetime(group["Fecha"], errors="coerce")
+                    # Valid rows with dates
+                    valid_dates = group.dropna(subset=["Fecha_dt"]).copy()
+                    
+                    if not valid_dates.empty:
+                        # Extract month/year
+                        valid_dates["mes_anio"] = valid_dates["Fecha_dt"].dt.to_period("M")
+                        meses_unicos = valid_dates["mes_anio"].nunique()
+                        
+                        # Sum Valor neto local
+                        valid_dates["Valor neto local"] = valid_dates["Valor neto local"].apply(to_float)
+                        suma = valid_dates["Valor neto local"].sum()
+                        
+                        if meses_unicos > 0:
+                            promedio = suma / meses_unicos
+                        else:
+                            promedio = 0
+                            
+                        cliente.promedio_mensual = round(promedio, 2)
+                    else:
+                        cliente.promedio_mensual = 0
+
+        db.commit()
+        return RedirectResponse(url="/?msg=Datos%20comerciales%20actualizados&msg_type=success", status_code=303)
+    except Exception as e:
+        print("❌ Error importar_datos_comerciales:", e)
+        return RedirectResponse(url="/?msg=Error%20al%20subir%20el%20archivo%20comercial&msg_type=error", status_code=303)
+
 
 # ------------------- Observaciones -------------------
 @app.post("/cliente/{cliente_id}/observacion")

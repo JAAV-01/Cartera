@@ -32,6 +32,10 @@ node_modules/
 *.csv
 *.bak
  
+# Archivos de la aplicación de Cartera (PDFs y ZIPs generados)
+cartas_generadas/
+*.zip
+*.pdf
 
  
 
