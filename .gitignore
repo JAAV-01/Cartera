@@ -38,5 +38,11 @@ cartas_generadas/
 *.pdf
 
  
-
+__pycache__/
+.venv/
+.env
+cartas_generadas/
+certificados_generados/
+*.xlsx
+*.csv
  
