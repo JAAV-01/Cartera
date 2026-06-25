@@ -747,51 +747,61 @@ async def importar_datos_comerciales(file: UploadFile = File(...), db: Session =
         contents = await file.read()
         sheets = pd.read_excel(BytesIO(contents), sheet_name=None, dtype=str, keep_default_na=False)
 
+        import re
+        clientes_db = db.query(models.Cliente).all()
+        clientes_dict = {}
+        for c in clientes_db:
+            if c.nit_cliente:
+                # Limpieza extrema: extraer solo números
+                nit_limpio = re.sub(r'\D', '', str(c.nit_cliente).split('.')[0])
+                if nit_limpio:
+                    if nit_limpio not in clientes_dict:
+                        clientes_dict[nit_limpio] = []
+                    clientes_dict[nit_limpio].append(c)
+
         if "BASE DE DATOS" in sheets:
             df_base = sheets["BASE DE DATOS"]
             for _, row in df_base.iterrows():
-                codigo = str(row.get("Código", "")).strip()
-                if not codigo: continue
-                cliente = db.query(models.Cliente).filter_by(nit_cliente=codigo).first()
-                if cliente:
-                    # Update fields
-                    cliente.fecha_ingreso = to_dt_nullsafe(row.get("Fecha ingreso"))
-                    
-                    MAPEO_CONDICIONES = {
-                        'C00': 'CONTADO', 'C01': 'CONTADO 1 DIA', 'C08': 'CLIENTE 8 DIAS',
-                        'C10': 'CLIENTE 10 DIAS', 'C15': 'CLIENTE 15 DIAS', 'C20': 'CLIENTE 20 DIAS',
-                        'C30': 'CLIENTE 30 DIAS', 'C35': 'CLIENTE 35 DIAS', 'C40': 'CLIENTE 40 DIAS',
-                        'C45': 'CLIENTE 45 DIAS', 'C60': 'CLIENTE 60 DIAS', 'C90': 'CLIENTE 90 DIAS',
-                        'COD': 'PAGO CONTRAENTREGA', 'CON': 'CONTADO', 'P01': 'PROVEEDORES 1 DIA',
-                        'P04': 'PROVEEDORES 30 DIAS', 'P05': 'PROVEEDORES 8 DIAS', 'P30': 'PROVEEDORES 30 DIAS',
-                        'PAN': 'PAGO ANTICIPADO'
-                    }
-                    
-                    codigo_crudo = str(row.get("Condicion de pago", "")).upper().replace(" ", "").strip()
-                    desc_excel = str(row.get("Desc. condicion de pago", "")).upper().strip()
+                nit_crudo = str(row.get("Código", ""))
+                nit_bd_limpio = re.sub(r'\D', '', nit_crudo.split('.')[0])
+                
+                if nit_bd_limpio in clientes_dict:
+                    for cliente in clientes_dict[nit_bd_limpio]:
+                        # Update fields
+                        cliente.fecha_ingreso = to_dt_nullsafe(row.get("Fecha ingreso"))
+                        
+                        MAPEO_CONDICIONES = {
+                            'C00': 'CONTADO', 'C01': 'CONTADO 1 DIA', 'C08': 'CLIENTE 8 DIAS',
+                            'C10': 'CLIENTE 10 DIAS', 'C15': 'CLIENTE 15 DIAS', 'C20': 'CLIENTE 20 DIAS',
+                            'C30': 'CLIENTE 30 DIAS', 'C35': 'CLIENTE 35 DIAS', 'C40': 'CLIENTE 40 DIAS',
+                            'C45': 'CLIENTE 45 DIAS', 'C60': 'CLIENTE 60 DIAS', 'C90': 'CLIENTE 90 DIAS',
+                            'COD': 'PAGO CONTRAENTREGA', 'CON': 'CONTADO', 'P01': 'PROVEEDORES 1 DIA',
+                            'P04': 'PROVEEDORES 30 DIAS', 'P05': 'PROVEEDORES 8 DIAS', 'P30': 'PROVEEDORES 30 DIAS',
+                            'PAN': 'PAGO ANTICIPADO'
+                        }
+                        
+                        codigo_crudo = str(row.get("Condicion de pago", "")).upper().replace(" ", "").strip()
+                        desc_excel = str(row.get("Desc. condicion de pago", "")).upper().strip()
 
-                    if codigo_crudo in MAPEO_CONDICIONES:
-                        cliente.condicion_pago = MAPEO_CONDICIONES[codigo_crudo]
-                    elif desc_excel and desc_excel not in ['NAN', 'NONE', '']:
-                        cliente.condicion_pago = desc_excel
-                    elif codigo_crudo and codigo_crudo not in ['NAN', 'NONE', '']:
-                        cliente.condicion_pago = codigo_crudo
-                    else:
-                        cliente.condicion_pago = None
-                    
-                    cliente.cupo_credito = to_float(row.get("Cupo de crédito"))
-                    cliente.fecha_ultima_compra = to_dt_nullsafe(row.get("Fecha última venta"))
+                        if codigo_crudo in MAPEO_CONDICIONES:
+                            cliente.condicion_pago = MAPEO_CONDICIONES[codigo_crudo]
+                        elif desc_excel and desc_excel not in ['NAN', 'NONE', '']:
+                            cliente.condicion_pago = desc_excel
+                        elif codigo_crudo and codigo_crudo not in ['NAN', 'NONE', '']:
+                            cliente.condicion_pago = codigo_crudo
+                        else:
+                            cliente.condicion_pago = None
+                        
+                        cliente.cupo_credito = to_float(row.get("Cupo de crédito"))
+                        cliente.fecha_ultima_compra = to_dt_nullsafe(row.get("Fecha última venta"))
 
         if "VENTAS" in sheets:
             df_ventas = sheets["VENTAS"]
             
-            # Clean nit
-            df_ventas["Cliente factura"] = df_ventas["Cliente factura"].astype(str).str.strip()
+            df_ventas['Cliente factura'] = df_ventas['Cliente factura'].fillna(0).astype(str).apply(lambda x: re.sub(r'\D', '', x.split('.')[0]))
             
-            for nit, group in df_ventas.groupby("Cliente factura"):
-                if not nit: continue
-                cliente = db.query(models.Cliente).filter_by(nit_cliente=nit).first()
-                if cliente:
+            for nit_venta, group in df_ventas.groupby('Cliente factura'):
+                if nit_venta in clientes_dict:
                     # Parse dates
                     group["Fecha_dt"] = pd.to_datetime(group["Fecha"], errors="coerce")
                     # Valid rows with dates
@@ -803,17 +813,18 @@ async def importar_datos_comerciales(file: UploadFile = File(...), db: Session =
                         meses_unicos = valid_dates["mes_anio"].nunique()
                         
                         # Sum Valor neto local
-                        valid_dates["Valor neto local"] = valid_dates["Valor neto local"].apply(to_float)
-                        suma = valid_dates["Valor neto local"].sum()
+                        valid_dates["Valor subtotal local"] = valid_dates["Valor subtotal local"].apply(to_float)
+                        suma = valid_dates["Valor subtotal local"].sum()
                         
                         if meses_unicos > 0:
                             promedio = suma / meses_unicos
                         else:
                             promedio = 0
-                            
-                        cliente.promedio_mensual = round(promedio, 2)
                     else:
-                        cliente.promedio_mensual = 0
+                        promedio = 0
+                        
+                    for cliente in clientes_dict[nit_venta]:
+                        cliente.promedio_mensual = round(promedio, 2)
 
         db.commit()
         return RedirectResponse(url="/?msg=Datos%20comerciales%20actualizados&msg_type=success", status_code=303)
